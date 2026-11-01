@@ -19,19 +19,38 @@
 
     <properties>
         <java.version>17</java.version>
-    </properties>
+        <kvclient.version>25.3.21</kvclient.version>
+        <nosqldriver.version>5.4.24</nosqldriver.version>
+</properties>
 
     <dependencies>
+        <!-- KV direct driver; not on Maven Central, install with scripts/install-kvclient.sh -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <groupId>com.oracle.kv</groupId>
+            <artifactId>kvclient</artifactId>
+            <version>${kvclient.version}</version>
+        </dependency>
+        <!-- kvclient's runtime dependencies (listed in its manifest, no pom) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.reactivestreams</groupId>
+            <artifactId>reactive-streams</artifactId>
         </dependency>
 
+        <!-- NoSQL SDK, talks to the HTTP proxy -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
+            <groupId>com.oracle.nosql.sdk</groupId>
+            <artifactId>nosqldriver</artifactId>
+            <version>${nosqldriver.version}</version>
         </dependency>
+
     </dependencies>
 
     <build>
@@ -39,6 +58,9 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.dbperformtest.Main</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>

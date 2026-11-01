@@ -19,3 +19,6 @@ target/
 
 ### OS ###
 .DS_Store
+
+### Benchmark output ###
+results/

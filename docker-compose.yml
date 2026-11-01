@@ -1,0 +1,36 @@
+services:
+  # Local alternative to AMQ Broker — RabbitMQ speaking AMQP 0-9-1/1.0
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: dbperformtest-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI (http://localhost:15672)
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Local alternative to Oracle NoSQL (cloud/on-prem) — Oracle NoSQL Database CE, KVLite mode
+  # NOTE: KVLite (port 5000) and the HTTP proxy (port 8090) are already running natively on this
+  # host; this service is only needed on machines that don't have them pre-installed.
+  oracle-nosql:
+    image: ghcr.io/oracle/nosql:latest-ce
+    container_name: dbperformtest-oracle-nosql
+    hostname: kvlite
+    ports:
+      - "5100:5000" # KVLite native (mapped to 5100 to avoid conflict with host KVLite on 5000)
+      - "8180:8080" # Proxy port (mapped to 8180 to avoid conflict with host proxy on 8090)
+    environment:
+      KV_PROXY_PORT: 8080
+      KV_STORAGESIZE: 2
+
+volumes:
+  rabbitmq-data:
