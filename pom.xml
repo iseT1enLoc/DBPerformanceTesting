@@ -19,32 +19,25 @@
 
     <properties>
         <java.version>17</java.version>
-        <kvclient.version>25.3.21</kvclient.version>
         <nosqldriver.version>5.4.24</nosqldriver.version>
+        <spring-data-nosql.version>2.2.0</spring-data-nosql.version>
 </properties>
 
     <dependencies>
-        <!-- KV direct driver; not on Maven Central, install with scripts/install-kvclient.sh -->
+        <!-- Spring Boot -->
         <dependency>
-            <groupId>com.oracle.kv</groupId>
-            <artifactId>kvclient</artifactId>
-            <version>${kvclient.version}</version>
-        </dependency>
-        <!-- kvclient's runtime dependencies (listed in its manifest, no pom) -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.reactivestreams</groupId>
-            <artifactId>reactive-streams</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
         </dependency>
 
-        <!-- NoSQL SDK, talks to the HTTP proxy -->
+        <!-- Spring Data Oracle NoSQL (wraps nosqldriver, talks to the HTTP proxy) -->
+        <dependency>
+            <groupId>com.oracle.nosql.sdk</groupId>
+            <artifactId>spring-data-oracle-nosql</artifactId>
+            <version>${spring-data-nosql.version}</version>
+        </dependency>
+
+        <!-- nosqldriver pinned higher than spring-data-oracle-nosql's transitive version -->
         <dependency>
             <groupId>com.oracle.nosql.sdk</groupId>
             <artifactId>nosqldriver</artifactId>

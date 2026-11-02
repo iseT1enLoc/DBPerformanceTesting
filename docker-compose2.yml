@@ -1,0 +1,82 @@
+# Local stand-ins for the on-prem migration investigation.
+#
+#   docker compose up -d                        # core services
+#   docker compose --profile artemis up -d      # also start Artemis (closest to AMQ Broker)
+#
+# NOT included: ODF / Rook-Ceph. It needs a Kubernetes cluster (kind, minikube, k3s).
+# MinIO below is only a light S3-compatible stand-in for ODF Object.
+
+services:
+  # DynamoDB target: Oracle NoSQL Community Edition
+  oraclenosql:
+    image: ghcr.io/oracle/nosql:latest-ce
+    container_name: oraclenosql
+    hostname: oraclenosql
+    environment:
+      KV_PROXY_PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - oraclenosql-data:/kvroot
+
+  # AMQ Broker stand-in: RabbitMQ 4.x (AMQP 1.0 is built in, no plugin needed)
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"     # AMQP (0-9-1 and 1.0)
+      - "15672:15672"   # management UI
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  # Closer match to AMQ Broker (Red Hat's build of ActiveMQ Artemis); opt-in via profile
+  artemis:
+    image: apache/activemq-artemis:latest-alpine
+    container_name: artemis
+    profiles: ["artemis"]
+    environment:
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+    ports:
+      - "5673:5672"     # AMQP 1.0 (shifted to avoid clashing with RabbitMQ)
+      - "61616:61616"   # core / OpenWire
+      - "8161:8161"     # web console
+    volumes:
+      - artemis-data:/var/lib/artemis-instance
+
+  # AWS baseline: S3 / SSM / DynamoDB
+  localstack:
+    image: localstack/localstack
+    container_name: localstack
+    environment:
+      SERVICES: s3,ssm,dynamodb
+      AWS_DEFAULT_REGION: ap-southeast-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack-data:/var/lib/localstack
+
+  # ODF Object stand-in (S3-compatible). Use path-style addressing in the client.
+  # Check your org's licensing for MinIO; Ceph RGW is the alternative.
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: odfaccess
+      MINIO_ROOT_PASSWORD: odfsecret123
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # console
+    volumes:
+      - minio-data:/data
+
+volumes:
+  oraclenosql-data:
+  rabbitmq-data:
+  artemis-data:
+  localstack-data:
+  minio-data:
