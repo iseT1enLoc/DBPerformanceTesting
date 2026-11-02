@@ -3,6 +3,7 @@ package com.example.dbperformtest.client;
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.DurabilityLevel;
 import com.example.dbperformtest.model.Order;
+import com.example.dbperformtest.model.OrderKey;
 
 import java.util.List;
 
@@ -16,10 +17,13 @@ public interface NoSqlClient {
 
     void put(String table, Order order, DurabilityLevel durability);
 
-    Order get(String table, String customerId, long orderId, ConsistencyLevel consistency);
+    Order get(String table, OrderKey key, ConsistencyLevel consistency);
 
     /** Batch write for rows that share the same shard key (customerId). */
     void putBatch(String table, List<Order> orders, DurabilityLevel durability);
+
+    /** Individual puts across any shards — no shard-key restriction. */
+    void putBulk(String table, List<Order> orders, DurabilityLevel durability);
 
     /** All rows for one shard key. */
     List<Order> getBatch(String table, String customerId, ConsistencyLevel consistency);
