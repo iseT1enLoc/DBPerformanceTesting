@@ -24,6 +24,7 @@ import oracle.nosql.driver.values.StringValue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Oracle NoSQL SDK (nosqldriver): connects through the HTTP proxy. */
@@ -31,9 +32,17 @@ public class SdkClientImpl implements NoSqlClient {
 
     private final NoSQLHandle handle;
     private final Map<String, PreparedStatement> statements = new ConcurrentHashMap<>();
+    private final Set<String> allowedTables;
 
-    public SdkClientImpl(NoSQLHandle handle) {
+    public SdkClientImpl(NoSQLHandle handle, String... allowedTables) {
         this.handle = handle;
+        this.allowedTables = Set.of(allowedTables);
+    }
+
+    private String table(String name) {
+        if (!allowedTables.contains(name))
+            throw new IllegalArgumentException("Unknown table: " + name);
+        return name;
     }
 
     @Override
@@ -42,7 +51,7 @@ public class SdkClientImpl implements NoSqlClient {
     @Override
     public void put(String table, Order order, DurabilityLevel durability) {
         handle.put(new PutRequest()
-                .setTableName(table)
+                .setTableName(table(table))
                 .setValue(toRow(order))
                 .setDurability(durability(durability)));
     }
@@ -50,7 +59,7 @@ public class SdkClientImpl implements NoSqlClient {
     @Override
     public Order get(String table, OrderKey key, ConsistencyLevel consistency) {
         GetResult result = handle.get(new GetRequest()
-                .setTableName(table)
+                .setTableName(table(table))
                 .setKey(toKeyMap(key))
                 .setConsistency(consistency(consistency)));
         return result.getValue() == null ? null : toOrder(result.getValue());
@@ -58,6 +67,7 @@ public class SdkClientImpl implements NoSqlClient {
 
     @Override
     public void putBulk(String table, List<Order> orders, DurabilityLevel durability) {
+        table(table); // validate once before the loop
         for (Order o : orders) {
             put(table, o, durability);
         }
@@ -68,7 +78,7 @@ public class SdkClientImpl implements NoSqlClient {
         WriteMultipleRequest req = new WriteMultipleRequest()
                 .setDurability(durability(durability));
         for (Order o : orders) {
-            req.add(new PutRequest().setTableName(table).setValue(toRow(o)), true);
+            req.add(new PutRequest().setTableName(table(table)).setValue(toRow(o)), true);
         }
         WriteMultipleResult result = handle.writeMultiple(req);
         if (!result.getSuccess()) {
@@ -85,7 +95,7 @@ public class SdkClientImpl implements NoSqlClient {
     @Override
     public List<Order> queryByCustomer(String table, String customerId, ConsistencyLevel consistency) {
         PreparedStatement stmt = prepared(
-                "DECLARE $cid STRING; SELECT * FROM " + table + " WHERE customerId = $cid");
+                "DECLARE $cid STRING; SELECT * FROM " + table(table) + " WHERE customerId = $cid");
         stmt.setVariable("$cid", new StringValue(customerId));
         return runQuery(stmt, consistency);
     }
@@ -94,7 +104,7 @@ public class SdkClientImpl implements NoSqlClient {
     public List<Order> queryByAmount(String table, double lo, double hi, ConsistencyLevel consistency) {
         PreparedStatement stmt = prepared(
                 "DECLARE $lo DOUBLE; DECLARE $hi DOUBLE;"
-                + " SELECT * FROM " + table + " WHERE amount >= $lo AND amount <= $hi");
+                + " SELECT * FROM " + table(table) + " WHERE amount >= $lo AND amount <= $hi");
         stmt.setVariable("$lo", new DoubleValue(lo));
         stmt.setVariable("$hi", new DoubleValue(hi));
         return runQuery(stmt, consistency);

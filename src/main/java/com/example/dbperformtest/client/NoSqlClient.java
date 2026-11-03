@@ -31,6 +31,6 @@ public interface NoSqlClient {
     /** Single-shard SQL query: rows for one customerId. */
     List<Order> queryByCustomer(String table, String customerId, ConsistencyLevel consistency);
 
-    /** All-shard SQL query: rows with amount in [lo, hi], served by a secondary index. */
+    /** ll-shard SQL query: rows with amount in [lo, hi], served by a secondary index. */
     List<Order> queryByAmount(String table, double lo, double hi, ConsistencyLevel consistency);
 }

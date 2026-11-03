@@ -18,6 +18,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
 
@@ -28,6 +32,8 @@ public class Main {
     private static final int    OPS        = 1_000;
     private static final int    INSERT_RUNS = 5;
 
+    private static final int    THREADS       = 4;
+
     private static final int    MAX_ATTEMPTS  = 5;
     private static final long   INITIAL_DELAY = 1_000; // ms
 
@@ -37,7 +43,7 @@ public class Main {
                 NoSQLHandleFactory.createNoSQLHandle(
                         new NoSQLHandleConfig("http://localhost:8180",
                                 new StoreAccessTokenProvider())));
-        SdkClientImpl sdk = new SdkClientImpl(handle);
+        SdkClientImpl sdk = new SdkClientImpl(handle, TABLE);
 
         // Create table and secondary index
         sdk.executeDdl("CREATE TABLE IF NOT EXISTS " + TABLE
@@ -82,6 +88,16 @@ public class Main {
                 client.getBatch(TABLE, batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
         });
 
+        // Parallel benchmark — same ops distributed across THREADS workers
+        System.out.printf("%n--- Parallel benchmark [threads=%d, ops=%d] ---%n", THREADS, OPS);
+        System.out.printf("%-6s  %-14s  %10s  %12s%n", "client", "operation", "ops/s", "avg ms/op");
+        System.out.println("-".repeat(50));
+        measureParallel(client, "put_single",   orders,  THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
+        measureParallel(client, "put_bulk",     orders,  THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
+        measureParallel(client, "get_single",   orders,  THREADS, o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
+        measureParallel(client, "query_shard",  orders,  THREADS, o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
+        measureParallel(client, "query_amount", orders,  THREADS, o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
+
         handle.close();
     }
 
@@ -124,6 +140,33 @@ public class Main {
         double totalMs = (System.nanoTime() - start) / 1_000_000.0;
         System.out.printf("%-6s  %-14s  %,10.0f  %12.3f%n",
                 client.name(), name, OPS / (totalMs / 1000), totalMs / OPS);
+    }
+
+    private static void measureParallel(NoSqlClient client, String name, List<Order> orders, int threads, Op op) throws Exception {
+        int size = orders.size();
+        for (int i = 0; i < WARMUP; i++) op.run(orders.get(i % size));
+
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        int opsPerThread = OPS / threads;
+
+        long start = System.nanoTime();
+        List<Future<?>> futures = new ArrayList<>(threads);
+        for (int t = 0; t < threads; t++) {
+            final int offset = t * opsPerThread;
+            futures.add(pool.submit(() -> {
+                for (int i = 0; i < opsPerThread; i++) {
+                    op.run(orders.get((offset + i) % size));
+                }
+            }));
+        }
+        for (Future<?> f : futures) f.get();
+        double totalMs = (System.nanoTime() - start) / 1_000_000.0;
+        pool.shutdown();
+        pool.awaitTermination(10, TimeUnit.SECONDS);
+
+        int totalOps = opsPerThread * threads;
+        System.out.printf("%-6s  %-14s  %,10.0f  %12.3f%n",
+                client.name(), name, totalOps / (totalMs / 1000), totalMs / totalOps);
     }
 
     private static void compareTotal(String label, int rows, int runs, int calls, Runnable action) {
