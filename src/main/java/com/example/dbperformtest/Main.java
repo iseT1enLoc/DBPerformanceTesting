@@ -1,15 +1,15 @@
 package com.example.dbperformtest;
 
-import com.example.dbperformtest.client.NoSqlClient;
-import com.example.dbperformtest.client.SdkClientImpl;
+import com.example.dbperformtest.client.NoSqlHandleFactory;
+import com.example.dbperformtest.client.order.OrderNoSqlClient;
+import com.example.dbperformtest.client.order.OrderSdkClientImpl;
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.OrderKey;
 import com.example.dbperformtest.model.DurabilityLevel;
 import com.example.dbperformtest.model.Order;
 import com.example.dbperformtest.workload.OrderCsvReader;
-import oracle.nosql.driver.NoSQLHandle;
+import com.example.dbperformtest.workload.UserCrudTest;
 import oracle.nosql.driver.NoSQLHandleConfig;
-import oracle.nosql.driver.NoSQLHandleFactory;
 import oracle.nosql.driver.kv.StoreAccessTokenProvider;
 
 import java.nio.file.Path;
@@ -38,12 +38,16 @@ public class Main {
     private static final long   INITIAL_DELAY = 1_000; // ms
 
     public static void main(String[] args) throws Exception {
-        // Connect with retry
-        NoSQLHandle handle = retry("sdk", () ->
-                NoSQLHandleFactory.createNoSQLHandle(
-                        new NoSQLHandleConfig("http://localhost:8180",
-                                new StoreAccessTokenProvider())));
-        SdkClientImpl sdk = new SdkClientImpl(handle, TABLE);
+        // Connect with retry — single handle for the whole application
+        retry("sdk", () -> {
+            NoSqlHandleFactory.configure(new NoSQLHandleConfig("http://localhost:8180",
+                    new StoreAccessTokenProvider()));
+            return null;
+        });
+        // User CRUD smoke-test
+        new UserCrudTest(NoSqlHandleFactory.getHandle()).run();
+
+        OrderSdkClientImpl sdk = new OrderSdkClientImpl(NoSqlHandleFactory.getHandle(), TABLE);
 
         // Create table and secondary index
         sdk.executeDdl("CREATE TABLE IF NOT EXISTS " + TABLE
@@ -62,14 +66,14 @@ public class Main {
         List<List<Order>> batches = new ArrayList<>(groupByCustomer(orders).values());
 
         // Per-operation benchmark
-        NoSqlClient client = sdk;
+        OrderNoSqlClient client = sdk;
         System.out.printf("%-6s  %-14s  %10s  %12s%n", "client", "operation", "ops/s", "avg ms/op");
         System.out.println("-".repeat(50));
         measure(client, "put_single",   orders,  o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
         measureBatch(client, "put_batch", batches, b -> client.putBatch(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
         measureBatch(client, "put_bulk",  batches, b -> client.putBulk(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
         measure(client, "get_single",   orders,  o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
-        measure(client, "get_batch",    orders,  o -> client.getBatch(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
+        measure(client, "get_batch",    orders,  o -> client.getBatch(TABLE, List.of(OrderKey.of(o.customerId(), o.orderId())), ConsistencyLevel.NONE_REQUIRED));
         measure(client, "query_shard",  orders,  o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
         measure(client, "query_amount", orders,  o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
 
@@ -83,9 +87,9 @@ public class Main {
             for (Order o : orders)
                 client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED);
         });
-        compareTotal("getBatch (per customer)", orders.size(), INSERT_RUNS, customers, () -> {
+        compareTotal("queryByCustomer", orders.size(), INSERT_RUNS, customers, () -> {
             for (List<Order> batch : batches)
-                client.getBatch(TABLE, batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
+                client.queryByCustomer(TABLE, batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
         });
 
         // Parallel benchmark — same ops distributed across THREADS workers
@@ -98,7 +102,7 @@ public class Main {
         measureParallel(client, "query_shard",  orders,  THREADS, o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
         measureParallel(client, "query_amount", orders,  THREADS, o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
 
-        handle.close();
+        NoSqlHandleFactory.close();
     }
 
     private static <T> T retry(String name, Callable<T> action) throws Exception {
@@ -122,7 +126,7 @@ public class Main {
     @FunctionalInterface interface Op      { void run(Order o); }
     @FunctionalInterface interface BatchOp { void run(List<Order> batch); }
 
-    private static void measure(NoSqlClient client, String name, List<Order> orders, Op op) {
+    private static void measure(OrderNoSqlClient client, String name, List<Order> orders, Op op) {
         int size = orders.size();
         for (int i = 0; i < WARMUP; i++) op.run(orders.get(i % size));
         long start = System.nanoTime();
@@ -132,7 +136,7 @@ public class Main {
                 client.name(), name, OPS / (totalMs / 1000), totalMs / OPS);
     }
 
-    private static void measureBatch(NoSqlClient client, String name, List<List<Order>> batches, BatchOp op) {
+    private static void measureBatch(OrderNoSqlClient client, String name, List<List<Order>> batches, BatchOp op) {
         int size = batches.size();
         for (int i = 0; i < WARMUP; i++) op.run(batches.get(i % size));
         long start = System.nanoTime();
@@ -142,7 +146,7 @@ public class Main {
                 client.name(), name, OPS / (totalMs / 1000), totalMs / OPS);
     }
 
-    private static void measureParallel(NoSqlClient client, String name, List<Order> orders, int threads, Op op) throws Exception {
+    private static void measureParallel(OrderNoSqlClient client, String name, List<Order> orders, int threads, Op op) throws Exception {
         int size = orders.size();
         for (int i = 0; i < WARMUP; i++) op.run(orders.get(i % size));
 

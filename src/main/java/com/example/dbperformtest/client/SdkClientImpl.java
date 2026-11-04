@@ -2,8 +2,6 @@ package com.example.dbperformtest.client;
 
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.DurabilityLevel;
-import com.example.dbperformtest.model.Order;
-import com.example.dbperformtest.model.OrderKey;
 import oracle.nosql.driver.Consistency;
 import oracle.nosql.driver.Durability;
 import oracle.nosql.driver.NoSQLHandle;
@@ -17,29 +15,45 @@ import oracle.nosql.driver.ops.TableRequest;
 import oracle.nosql.driver.ops.TableResult;
 import oracle.nosql.driver.ops.WriteMultipleRequest;
 import oracle.nosql.driver.ops.WriteMultipleResult;
-import oracle.nosql.driver.values.DoubleValue;
 import oracle.nosql.driver.values.MapValue;
-import oracle.nosql.driver.values.StringValue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
-/** Oracle NoSQL SDK (nosqldriver): connects through the HTTP proxy. */
-public class SdkClientImpl implements NoSqlClient {
+/**
+ * Generic Oracle NoSQL SDK implementation. Use a domain-specific subclass (or extend
+ * directly) to add entity-specific query methods on top of the standard CRUD operations.
+ *
+ * @param <T> entity type
+ * @param <K> key type
+ */
+public class SdkClientImpl<T, K> implements NoSqlClient<T, K> {
+
+    public static final int DEFAULT_MAX_BATCH_SIZE = 25;
 
     private final NoSQLHandle handle;
+    private final RowMapper<T, K> mapper;
+    private final int maxBatchSize;
     private final Map<String, PreparedStatement> statements = new ConcurrentHashMap<>();
     private final Set<String> allowedTables;
 
-    public SdkClientImpl(NoSQLHandle handle, String... allowedTables) {
-        this.handle = handle;
+    public SdkClientImpl(NoSQLHandle handle, RowMapper<T, K> mapper, String... allowedTables) {
+        this(handle, mapper, DEFAULT_MAX_BATCH_SIZE, allowedTables);
+    }
+
+    public SdkClientImpl(NoSQLHandle handle, RowMapper<T, K> mapper, int maxBatchSize, String... allowedTables) {
+        if (maxBatchSize < 1) throw new IllegalArgumentException("maxBatchSize must be >= 1");
+        this.handle       = handle;
+        this.mapper       = mapper;
+        this.maxBatchSize = maxBatchSize;
         this.allowedTables = Set.of(allowedTables);
     }
 
-    private String table(String name) {
+    protected String table(String name) {
         if (!allowedTables.contains(name))
             throw new IllegalArgumentException("Unknown table: " + name);
         return name;
@@ -49,65 +63,73 @@ public class SdkClientImpl implements NoSqlClient {
     public String name() { return "sdk"; }
 
     @Override
-    public void put(String table, Order order, DurabilityLevel durability) {
+    public void put(String table, T entity, DurabilityLevel durability) {
         handle.put(new PutRequest()
                 .setTableName(table(table))
-                .setValue(toRow(order))
+                .setValue(mapper.toRow(entity))
                 .setDurability(durability(durability)));
     }
 
     @Override
-    public Order get(String table, OrderKey key, ConsistencyLevel consistency) {
+    public T get(String table, K key, ConsistencyLevel consistency) {
         GetResult result = handle.get(new GetRequest()
                 .setTableName(table(table))
-                .setKey(toKeyMap(key))
+                .setKey(mapper.toKey(key))
                 .setConsistency(consistency(consistency)));
-        return result.getValue() == null ? null : toOrder(result.getValue());
+        return result.getValue() == null ? null : mapper.fromRow(result.getValue());
     }
 
+    /**
+     * Issues an individual {@code put} for each entity.
+     * Use this when entities span different shard keys — {@code writeMultiple} requires
+     * all rows in a request to share the same shard key, so individual puts are the only option.
+     */
     @Override
-    public void putBulk(String table, List<Order> orders, DurabilityLevel durability) {
-        table(table); // validate once before the loop
-        for (Order o : orders) {
-            put(table, o, durability);
+    public void putBulk(String table, List<T> entities, DurabilityLevel durability) {
+        table(table);
+        for (T entity : entities) {
+            put(table, entity, durability);
         }
     }
 
+    /**
+     * Splits {@code entities} into chunks of {@link #maxBatchSize} and sends each chunk
+     * as a single {@code writeMultiple} request. All rows in a chunk must share the same
+     * shard key (Oracle NoSQL requirement).
+     */
     @Override
-    public void putBatch(String table, List<Order> orders, DurabilityLevel durability) {
-        WriteMultipleRequest req = new WriteMultipleRequest()
-                .setDurability(durability(durability));
-        for (Order o : orders) {
-            req.add(new PutRequest().setTableName(table(table)).setValue(toRow(o)), true);
+    public void putBatch(String table, List<T> entities, DurabilityLevel durability) {
+        table(table);
+        for (int i = 0; i < entities.size(); i += maxBatchSize) {
+            List<T> chunk = entities.subList(i, Math.min(i + maxBatchSize, entities.size()));
+            WriteMultipleRequest req = new WriteMultipleRequest()
+                    .setDurability(durability(durability));
+            for (T entity : chunk) {
+                req.add(new PutRequest()
+                        .setTableName(table)
+                        .setValue(mapper.toRow(entity)), true);
+            }
+            WriteMultipleResult result = handle.writeMultiple(req);
+            if (!result.getSuccess()) {
+                throw new IllegalStateException("writeMultiple failed at chunk starting at index "
+                        + i + ", operation index " + result.getFailedOperationIndex());
+            }
         }
-        WriteMultipleResult result = handle.writeMultiple(req);
-        if (!result.getSuccess()) {
-            throw new IllegalStateException("writeMultiple failed at index "
-                    + result.getFailedOperationIndex());
+    }
+
+    /**
+     * Issues an individual {@code get} request for each key and returns the found rows.
+     * Missing keys are silently skipped — the result list never contains nulls.
+     */
+    @Override
+    public List<T> getBatch(String table, List<K> keys, ConsistencyLevel consistency) {
+        table(table);
+        List<T> results = new ArrayList<>(keys.size());
+        for (K key : keys) {
+            T value = get(table, key, consistency);
+            if (value != null) results.add(value);
         }
-    }
-
-    @Override
-    public List<Order> getBatch(String table, String customerId, ConsistencyLevel consistency) {
-        return queryByCustomer(table, customerId, consistency);
-    }
-
-    @Override
-    public List<Order> queryByCustomer(String table, String customerId, ConsistencyLevel consistency) {
-        PreparedStatement stmt = prepared(
-                "DECLARE $cid STRING; SELECT * FROM " + table(table) + " WHERE customerId = $cid");
-        stmt.setVariable("$cid", new StringValue(customerId));
-        return runQuery(stmt, consistency);
-    }
-
-    @Override
-    public List<Order> queryByAmount(String table, double lo, double hi, ConsistencyLevel consistency) {
-        PreparedStatement stmt = prepared(
-                "DECLARE $lo DOUBLE; DECLARE $hi DOUBLE;"
-                + " SELECT * FROM " + table(table) + " WHERE amount >= $lo AND amount <= $hi");
-        stmt.setVariable("$lo", new DoubleValue(lo));
-        stmt.setVariable("$hi", new DoubleValue(hi));
-        return runQuery(stmt, consistency);
+        return results;
     }
 
     /** Runs a DDL statement synchronously (CREATE TABLE, CREATE INDEX, DROP …). */
@@ -120,56 +142,46 @@ public class SdkClientImpl implements NoSqlClient {
         }
     }
 
-    private List<Order> runQuery(PreparedStatement stmt, ConsistencyLevel consistency) {
-        List<Order> orders = new ArrayList<>();
+    /**
+     * Executes a prepared SQL query. Subclasses call this to implement domain-specific queries.
+     *
+     * @param sql    parameterized SQL (use DECLARE variables)
+     * @param params consumer that binds variables on the prepared statement
+     */
+    protected List<T> runQuery(String sql, Consumer<PreparedStatement> params, ConsistencyLevel consistency) {
+        PreparedStatement stmt = prepared(sql);
+        params.accept(stmt);
+        return runQuery(stmt, consistency);
+    }
+
+    protected List<T> runQuery(PreparedStatement stmt, ConsistencyLevel consistency) {
+        List<T> results = new ArrayList<>();
         try (QueryRequest req = new QueryRequest()
                 .setPreparedStatement(stmt)
                 .setConsistency(consistency(consistency))) {
             do {
                 for (MapValue v : handle.query(req).getResults()) {
-                    orders.add(toOrder(v));
+                    results.add(mapper.fromRow(v));
                 }
             } while (!req.isDone());
         }
-        return orders;
+        return results;
     }
 
-    private PreparedStatement prepared(String sql) {
+    protected PreparedStatement prepared(String sql) {
         return statements.computeIfAbsent(sql, s ->
                 handle.prepare(new PrepareRequest().setStatement(s)).getPreparedStatement()
         ).copyStatement();
     }
 
-    private static MapValue toKeyMap(OrderKey key) {
-        return new MapValue()
-                .put("customerId", key.customerId())
-                .put("orderId", key.orderId());
-    }
-
-    private static MapValue toRow(Order o) {
-        return new MapValue()
-                .put("customerId", o.customerId())
-                .put("orderId", o.orderId())
-                .put("amount", o.amount())
-                .put("payload", o.payload());
-    }
-
-    private static Order toOrder(MapValue v) {
-        return new Order(
-                v.getString("customerId"),
-                v.getLong("orderId"),
-                v.getDouble("amount"),
-                v.getString("payload"));
-    }
-
-    private static Durability durability(DurabilityLevel level) {
+    protected static Durability durability(DurabilityLevel level) {
         return switch (level) {
             case COMMIT_NO_SYNC -> Durability.COMMIT_NO_SYNC;
             case COMMIT_SYNC    -> Durability.COMMIT_SYNC;
         };
     }
 
-    private static Consistency consistency(ConsistencyLevel level) {
+    protected static Consistency consistency(ConsistencyLevel level) {
         return switch (level) {
             case NONE_REQUIRED -> Consistency.EVENTUAL;
             case ABSOLUTE      -> Consistency.ABSOLUTE;

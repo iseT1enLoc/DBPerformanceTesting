@@ -2,35 +2,37 @@ package com.example.dbperformtest.client;
 
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.DurabilityLevel;
-import com.example.dbperformtest.model.Order;
-import com.example.dbperformtest.model.OrderKey;
 
 import java.util.List;
 
 /**
- * Operations benchmarked against Oracle NoSQL. Implementations must be thread-safe
- * and must fully convert results to {@link Order} so deserialization cost is measured equally.
+ * Generic Oracle NoSQL operations. Implementations must be thread-safe and must fully
+ * convert results to {@code T} so deserialization cost is measured equally.
+ *
+ * @param <T> entity type
+ * @param <K> key type
  */
-public interface NoSqlClient {
+public interface NoSqlClient<T, K> {
 
     String name();
 
-    void put(String table, Order order, DurabilityLevel durability);
+    void put(String table, T entity, DurabilityLevel durability);
 
-    Order get(String table, OrderKey key, ConsistencyLevel consistency);
+    T get(String table, K key, ConsistencyLevel consistency);
 
-    /** Batch write for rows that share the same shard key (customerId). */
-    void putBatch(String table, List<Order> orders, DurabilityLevel durability);
+    /**
+     * Batch write for rows that share the same shard key.
+     * The list is split into chunks of {@code MAX_BATCH_SIZE} and each chunk is sent
+     * as a single {@code writeMultiple} request.
+     */
+    void putBatch(String table, List<T> entities, DurabilityLevel durability);
 
     /** Individual puts across any shards — no shard-key restriction. */
-    void putBulk(String table, List<Order> orders, DurabilityLevel durability);
+    void putBulk(String table, List<T> entities, DurabilityLevel durability);
 
-    /** All rows for one shard key. */
-    List<Order> getBatch(String table, String customerId, ConsistencyLevel consistency);
-
-    /** Single-shard SQL query: rows for one customerId. */
-    List<Order> queryByCustomer(String table, String customerId, ConsistencyLevel consistency);
-
-    /** ll-shard SQL query: rows with amount in [lo, hi], served by a secondary index. */
-    List<Order> queryByAmount(String table, double lo, double hi, ConsistencyLevel consistency);
+    /**
+     * Fetches each key with an individual {@code get} request and returns the found rows.
+     * Missing keys are silently skipped (no null in the result list).
+     */
+    List<T> getBatch(String table, List<K> keys, ConsistencyLevel consistency);
 }
