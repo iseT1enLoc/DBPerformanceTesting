@@ -1,0 +1,8 @@
+docker exec -it nosql-test bash
+
+java -jar lib/kvstore.jar runadmin \
+  -host localhost \
+  -port 5000
+java -jar lib/sql.jar \
+  -helper-hosts localhost:5000 \
+  -store kvstore

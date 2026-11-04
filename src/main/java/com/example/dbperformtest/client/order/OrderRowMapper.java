@@ -34,4 +34,10 @@ public class OrderRowMapper implements RowMapper<Order, OrderKey> {
 
     @Override
     public String shardKeyField() { return "customerId"; }
+
+    @Override
+    public String shardKeyValue(Order entity) { return entity.customerId(); }
+
+    @Override
+    public String[] columns() { return new String[]{"customerId", "orderId", "amount", "payload"}; }
 }

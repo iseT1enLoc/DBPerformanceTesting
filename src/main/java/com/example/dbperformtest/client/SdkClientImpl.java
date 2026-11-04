@@ -17,6 +17,8 @@ import oracle.nosql.driver.ops.WriteMultipleRequest;
 import oracle.nosql.driver.ops.WriteMultipleResult;
 import oracle.nosql.driver.values.MapValue;
 
+import java.util.stream.Collectors;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -130,6 +132,91 @@ public class SdkClientImpl<T, K> implements NoSqlClient<T, K> {
             if (value != null) results.add(value);
         }
         return results;
+    }
+
+    /**
+     * Fetches each key using a native {@link GetRequest} issued in parallel across a fixed
+     * thread pool so network round-trips overlap. Missing keys are silently skipped.
+     */
+    @Override
+    public List<T> getListByPrimaryKey(String table, List<K> keys, ConsistencyLevel consistency) {
+        table(table);
+        Consistency c = consistency(consistency);
+        List<java.util.concurrent.Future<T>> futures = new ArrayList<>(keys.size());
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(
+                        Math.min(keys.size(), Runtime.getRuntime().availableProcessors() * 2));
+        try {
+            for (K key : keys) {
+                futures.add(pool.submit(() -> {
+                    GetResult r = handle.get(new GetRequest()
+                            .setTableName(table)
+                            .setKey(mapper.toKey(key))
+                            .setConsistency(c));
+                    return r.getValue() == null ? null : mapper.fromRow(r.getValue());
+                }));
+            }
+            List<T> results = new ArrayList<>(keys.size());
+            for (java.util.concurrent.Future<T> f : futures) {
+                T value = f.get();
+                if (value != null) results.add(value);
+            }
+            return results;
+        } catch (Exception e) {
+            throw new RuntimeException("getListByPrimaryKey failed", e);
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    /**
+     * SQL-based lookup using an inline {@code IN} clause built from the key list.
+     * A new QueryRequest is issued per call (no prepared-statement cache) because
+     * the literal list changes with each invocation.
+     */
+    @Override
+    public List<T> getListById(String table, List<String> keys, ConsistencyLevel consistency) {
+        table(table);
+        String field = mapper.shardKeyField();
+        String inList = keys.stream()
+                .map(id -> "\"" + id.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(", "));
+        String cols = String.join(", ", mapper.columns());
+        String sql = "SELECT " + cols + " FROM " + table + " WHERE " + field + " IN (" + inList + ")";
+        System.out.printf("[getListById] %d keys, SQL: %s%n", keys.size(), sql);
+        List<T> results = new ArrayList<>();
+        try (QueryRequest req = new QueryRequest()
+                .setStatement(sql)
+                .setConsistency(consistency(consistency))) {
+            do {
+                for (MapValue v : handle.query(req).getResults()) {
+                    results.add(mapper.fromRow(v));
+                }
+            } while (!req.isDone());
+        }
+        return results;
+    }
+
+    /**
+     * Writes the given entities in a single {@code writeMultiple} request.
+     * All entities must share the same shard key — partitioning is the caller's responsibility.
+     */
+    @Override
+    public void writeBulk(String table, List<T> entities, ConsistencyLevel consistency) {
+        if (entities.isEmpty()) return;
+        table(table);
+        WriteMultipleRequest req = new WriteMultipleRequest();
+        for (T entity : entities) {
+            req.add(new PutRequest()
+                    .setTableName(table)
+                    .setValue(mapper.toRow(entity)), true);
+        }
+        WriteMultipleResult result = handle.writeMultiple(req);
+        if (!result.getSuccess()) {
+            throw new IllegalStateException(
+                    "writeBulk: writeMultiple failed at operation index "
+                    + result.getFailedOperationIndex());
+        }
     }
 
     /** Runs a DDL statement synchronously (CREATE TABLE, CREATE INDEX, DROP …). */

@@ -30,4 +30,10 @@ public class UserRowMapper implements RowMapper<User, UserKey> {
 
     @Override
     public String shardKeyField() { return "userId"; }
+
+    @Override
+    public String shardKeyValue(User entity) { return entity.userId(); }
+
+    @Override
+    public String[] columns() { return new String[]{"userId", "name", "email"}; }
 }

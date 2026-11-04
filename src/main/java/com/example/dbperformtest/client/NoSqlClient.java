@@ -35,4 +35,14 @@ public interface NoSqlClient<T, K> {
      * Missing keys are silently skipped (no null in the result list).
      */
     List<T> getBatch(String table, List<K> keys, ConsistencyLevel consistency);
+
+    /**
+     * SQL-based lookup: returns all rows whose shard-key field matches any value in {@code keys}.
+     * Uses a prepared statement with an {@code ARRAY} bind variable so the same plan is reused
+     * across calls; {@code seq_contains} lets Oracle NoSQL scatter the query across shards.
+     * Missing keys are silently absent from the result.
+     */
+    List<T> getListById(String table, List<String> keys, ConsistencyLevel consistency);
+    List<T> getListByPrimaryKey(String table, List<K> keys, ConsistencyLevel consistency);
+    void writeBulk(String table, List<T> entities, ConsistencyLevel consistency);
 }

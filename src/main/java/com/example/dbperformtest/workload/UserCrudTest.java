@@ -8,7 +8,12 @@ import com.example.dbperformtest.model.User;
 import com.example.dbperformtest.model.UserKey;
 import oracle.nosql.driver.NoSQLHandle;
 
+import com.google.common.collect.Lists;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Smoke-test for User CRUD operations using the generic {@link SdkClientImpl}.
@@ -25,16 +30,29 @@ public class UserCrudTest {
     }
 
     public void run() {
-        client.executeDdl("CREATE TABLE IF NOT EXISTS " + TABLE
-                + " (userId STRING, name STRING, email STRING,"
-                + " PRIMARY KEY (userId))");
-
+        ensureTable();
         System.out.println("\n=== User CRUD test ===");
         testPutAndGet();
         testPutBulkAndGetBatch();
+        testGetListById();
+        testWriteBulk();
+        testGetListByPrimaryKey();
         testOverwrite();
         testGetMissing();
         System.out.println("=== All user tests passed ===\n");
+    }
+
+    public void runGetListById() {
+        ensureTable();
+        System.out.println("\n=== getListById test ===");
+        testGetListById();
+        System.out.println("=== getListById test passed ===\n");
+    }
+
+    private void ensureTable() {
+        client.executeDdl("CREATE TABLE IF NOT EXISTS " + TABLE
+                + " (userId STRING, name STRING, email STRING,"
+                + " PRIMARY KEY (userId))");
     }
 
     // --- test cases ---
@@ -69,6 +87,69 @@ public class UserCrudTest {
         assertEqual("getBatch: size", 1, batch.size());
         assertEqual("getBatch: name", "Bob", batch.get(0).name());
         System.out.println("[OK] getBatch");
+    }
+
+    private void testGetListById() {
+        // seed 10 users so the partition logic has something to split
+        List<String> allIds = new ArrayList<>();
+        for (int i = 10; i < 20; i++) {
+            String id = "ul" + i;
+            client.put(TABLE, new User(id, "User" + i, "user" + i + "@example.com"),
+                    DurabilityLevel.COMMIT_SYNC);
+            allIds.add(id);
+        }
+
+        // partition the id list into chunks of 3 and collect results across all partitions
+        int partitionSize = 3;
+        List<User> allFound = new ArrayList<>();
+        for (List<String> partition : Lists.partition(allIds, partitionSize)) {
+            allFound.addAll(client.getListById(TABLE, partition, ConsistencyLevel.ABSOLUTE));
+        }
+
+        assertEqual("getListById: total results", allIds.size(), allFound.size());
+        System.out.println("[OK] getListById (10 users, partitioned by 3)");
+    }
+
+    private void testWriteBulk() {
+        List<User> users = List.of(
+                new User("wb1", "Wendy",  "wendy@example.com"),
+                new User("wb2", "Xander", "xander@example.com"),
+                new User("wb3", "Yara",   "yara@example.com"),
+                new User("wb4", "Zane",   "zane@example.com"),
+                new User("wb5", "Amy",    "amy@example.com"),
+                new User("wb6", "Ben",    "ben@example.com")
+        );
+
+        // partition by shard key then chunk — writeBulk only handles the actual write
+        int partitionSize = 2;
+        Map<String, List<User>> byShardKey = new LinkedHashMap<>();
+        for (User u : users) {
+            byShardKey.computeIfAbsent(u.userId(), k -> new ArrayList<>()).add(u);
+        }
+        for (List<User> shardGroup : byShardKey.values()) {
+            for (List<User> chunk : Lists.partition(shardGroup, partitionSize)) {
+                client.writeBulk(TABLE, chunk, ConsistencyLevel.ABSOLUTE);
+            }
+        }
+
+        for (User u : users) {
+            User found = client.get(TABLE, new UserKey(u.userId()), ConsistencyLevel.ABSOLUTE);
+            assertNotNull("writeBulk: " + u.userId(), found);
+            assertEqual("writeBulk: name " + u.userId(), u.name(), found.name());
+        }
+        System.out.println("[OK] writeBulk (6 users, partitioned by caller)");
+    }
+
+    private void testGetListByPrimaryKey() {
+        List<UserKey> keys = List.of(
+                new UserKey("u1"), new UserKey("u2"),
+                new UserKey("u3"), new UserKey("u4"),
+                new UserKey("no-such-user")
+        );
+        List<User> found = client.getListByPrimaryKey(TABLE, keys, ConsistencyLevel.ABSOLUTE);
+        // 4 exist, 1 missing — missing silently skipped
+        assertEqual("getListByPrimaryKey: size", 4, found.size());
+        System.out.println("[OK] getListByPrimaryKey (parallel native get, 4 found / 1 missing)");
     }
 
     private void testOverwrite() {
