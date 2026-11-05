@@ -1,6 +1,6 @@
-package com.example.dbperformtest.client.order;
+package com.example.dbperformtest.api.client.order;
 
-import com.example.dbperformtest.client.NoSqlClient;
+import com.example.dbperformtest.api.client.NoSqlClient;
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.Order;
 import com.example.dbperformtest.model.OrderKey;

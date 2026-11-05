@@ -1,7 +1,7 @@
 package com.example.dbperformtest.workload;
 
-import com.example.dbperformtest.client.SdkClientImpl;
-import com.example.dbperformtest.client.user.UserRowMapper;
+import com.example.dbperformtest.api.client.SdkClientImpl;
+import com.example.dbperformtest.api.client.user.UserRowMapper;
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.DurabilityLevel;
 import com.example.dbperformtest.model.User;

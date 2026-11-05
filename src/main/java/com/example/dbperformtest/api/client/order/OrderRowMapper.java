@@ -1,6 +1,6 @@
-package com.example.dbperformtest.client.order;
+package com.example.dbperformtest.api.client.order;
 
-import com.example.dbperformtest.client.RowMapper;
+import com.example.dbperformtest.api.client.RowMapper;
 import com.example.dbperformtest.model.Order;
 import com.example.dbperformtest.model.OrderKey;
 import oracle.nosql.driver.values.MapValue;

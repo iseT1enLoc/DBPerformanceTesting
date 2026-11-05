@@ -4,63 +4,70 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!--
+        Spring Boot parent manages all Spring dependency versions for us.
+        We never have to write <version> for Spring libraries after this.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version>
+        <relativePath/>
+    </parent>
+
     <groupId>com.example</groupId>
     <artifactId>db-perform-test</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>DBPerformTest</name>
-    <description>Oracle NoSQL SDK performance benchmark</description>
+    <description>Oracle NoSQL SDK performance benchmark + Spring REST API learning</description>
 
     <properties>
         <java.version>17</java.version>
-        <maven.compiler.source>${java.version}</maven.compiler.source>
-        <maven.compiler.target>${java.version}</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <nosqldriver.version>5.4.24</nosqldriver.version>
     </properties>
 
     <dependencies>
+        <!-- Brings in: Spring MVC, Jackson (JSON), embedded Tomcat -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Oracle NoSQL SDK (for the benchmark Main class) -->
         <dependency>
             <groupId>com.oracle.nosql.sdk</groupId>
             <artifactId>nosqldriver</artifactId>
             <version>${nosqldriver.version}</version>
         </dependency>
+
+        <!-- Guava (used by UserCrudTest) -->
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
             <version>33.2.1-jre</version>
         </dependency>
+
+        <!-- JUnit 5 + Mockito — no Spring context needed for unit tests -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Fat jar: mvn package → java -jar target/db-perform-test-0.0.1-SNAPSHOT.jar -->
+            <!--
+                Spring Boot plugin packages the app as a runnable fat jar.
+                mvn package  →  java -jar target/db-perform-test-0.0.1-SNAPSHOT.jar
+                The main class is SpringApp (the REST server).
+            -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.3</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals><goal>shade</goal></goals>
-                        <configuration>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.example.dbperformtest.Main</mainClass>
-                                </transformer>
-                            </transformers>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                        </configuration>
-                    </execution>
-                </executions>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.dbperformtest.api.SpringApp</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>

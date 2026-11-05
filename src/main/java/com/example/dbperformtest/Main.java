@@ -1,23 +1,20 @@
 package com.example.dbperformtest;
 
-import com.example.dbperformtest.client.NoSqlHandleFactory;
-import com.example.dbperformtest.client.order.OrderNoSqlClient;
-import com.example.dbperformtest.client.order.OrderSdkClientImpl;
+import com.example.dbperformtest.api.client.order.OrderNoSqlClient;
+import com.example.dbperformtest.api.client.order.OrderSdkClientImpl;
 import com.example.dbperformtest.model.ConsistencyLevel;
-import com.example.dbperformtest.model.OrderKey;
 import com.example.dbperformtest.model.DurabilityLevel;
 import com.example.dbperformtest.model.Order;
+import com.example.dbperformtest.model.OrderKey;
 import com.example.dbperformtest.workload.OrderCsvReader;
 import com.example.dbperformtest.workload.UserCrudTest;
-import oracle.nosql.driver.NoSQLHandleConfig;
-import oracle.nosql.driver.kv.StoreAccessTokenProvider;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -25,103 +22,93 @@ import java.util.concurrent.TimeUnit;
 
 public class Main {
 
-    private static final String TABLE      = "orders";
-    private static final String CSV_FILE   = "data/orders.csv";
-    private static final int    RECORDS    = 100_000;
-    private static final int    WARMUP     = 200;
-    private static final int    OPS        = 1_000;
+    private static final String TABLE       = "orders";
+    private static final String CSV_FILE    = "data/orders.csv";
+    private static final int    RECORDS     = 100_000;
+    private static final int    WARMUP      = 200;
+    private static final int    OPS         = 1_000;
     private static final int    INSERT_RUNS = 5;
-
-    private static final int    THREADS       = 4;
-
-    private static final int    MAX_ATTEMPTS  = 5;
-    private static final long   INITIAL_DELAY = 1_000; // ms
+    private static final int    THREADS     = 4;
 
     public static void main(String[] args) throws Exception {
-        // Connect with retry — single handle for the whole application
-        retry("sdk", () -> {
-            NoSqlHandleFactory.configure(new NoSQLHandleConfig("http://localhost:8180",
-                    new StoreAccessTokenProvider()));
-            return null;
-        });
-        // User CRUD smoke-test
-        new UserCrudTest(NoSqlHandleFactory.getHandle()).run();
+        /*
+         * Boot the Spring container by pointing it at the XML config file.
+         * "classpath:" tells Spring to look in src/main/resources/.
+         * Spring reads applicationContext.xml, creates every <bean> in
+         * dependency order, and stores them as managed singletons.
+         *
+         * try-with-resources calls context.close() on exit, which triggers
+         * Spring's shutdown lifecycle and closes the NoSQLHandle cleanly.
+         */
+        try (ClassPathXmlApplicationContext context =
+                     new ClassPathXmlApplicationContext("applicationContext.xml")) {
 
-        OrderSdkClientImpl sdk = new OrderSdkClientImpl(NoSqlHandleFactory.getHandle(), TABLE);
+            // Pull beans out of the container by type — no "new" in main().
+            UserCrudTest       userCrudTest = context.getBean(UserCrudTest.class);
+            OrderSdkClientImpl sdk          = context.getBean(OrderSdkClientImpl.class);
 
-        // Create table and secondary index
-        sdk.executeDdl("CREATE TABLE IF NOT EXISTS " + TABLE
-                + " (customerId STRING, orderId LONG, amount DOUBLE, payload STRING,"
-                + " PRIMARY KEY (SHARD(customerId), orderId))");
-        sdk.executeDdl("CREATE INDEX IF NOT EXISTS idx_amount ON " + TABLE + " (amount)");
+            // User CRUD smoke-test
+            userCrudTest.run();
 
-        // Load CSV and seed the table
-        List<Order> orders = OrderCsvReader.read(Path.of(CSV_FILE), RECORDS);
-        System.out.printf("Loaded %d records from %s%n%n", orders.size(), CSV_FILE);
-        for (Order order : orders) {
-            sdk.put(TABLE, order, DurabilityLevel.COMMIT_NO_SYNC);
-        }
+            // Create table and secondary index
+            sdk.executeDdl("CREATE TABLE IF NOT EXISTS " + TABLE
+                    + " (customerId STRING, orderId LONG, amount DOUBLE, payload STRING,"
+                    + " PRIMARY KEY (SHARD(customerId), orderId))");
+            sdk.executeDdl("CREATE INDEX IF NOT EXISTS idx_amount ON " + TABLE + " (amount)");
 
-        // Group orders by customer (for putBatch — same shard key required)
-        List<List<Order>> batches = new ArrayList<>(groupByCustomer(orders).values());
-
-        // Per-operation benchmark
-        OrderNoSqlClient client = sdk;
-        System.out.printf("%-6s  %-14s  %10s  %12s%n", "client", "operation", "ops/s", "avg ms/op");
-        System.out.println("-".repeat(50));
-        measure(client, "put_single",   orders,  o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
-        measureBatch(client, "put_batch", batches, b -> client.putBatch(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
-        measureBatch(client, "put_bulk",  batches, b -> client.putBulk(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
-        measure(client, "get_single",   orders,  o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
-        measure(client, "get_batch",    orders,  o -> client.getBatch(TABLE, List.of(OrderKey.of(o.customerId(), o.orderId())), ConsistencyLevel.NONE_REQUIRED));
-        measure(client, "query_shard",  orders,  o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
-        measure(client, "query_amount", orders,  o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
-
-        // Sequential vs getBatch — total time over all RECORDS rows
-        int customers = batches.size();
-        System.out.printf("%n--- Read %d records: sequential vs getBatch [%d runs] ---%n",
-                orders.size(), INSERT_RUNS);
-        System.out.printf("%-26s  %10s  %12s  %10s%n", "method", "rows/s", "total ms", "calls");
-        System.out.println("-".repeat(64));
-        compareTotal("sequential (get_single)", orders.size(), INSERT_RUNS, orders.size(), () -> {
-            for (Order o : orders)
-                client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED);
-        });
-        compareTotal("queryByCustomer", orders.size(), INSERT_RUNS, customers, () -> {
-            for (List<Order> batch : batches)
-                client.queryByCustomer(TABLE, batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
-        });
-
-        // Parallel benchmark — same ops distributed across THREADS workers
-        System.out.printf("%n--- Parallel benchmark [threads=%d, ops=%d] ---%n", THREADS, OPS);
-        System.out.printf("%-6s  %-14s  %10s  %12s%n", "client", "operation", "ops/s", "avg ms/op");
-        System.out.println("-".repeat(50));
-        measureParallel(client, "put_single",   orders,  THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
-        measureParallel(client, "put_bulk",     orders,  THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
-        measureParallel(client, "get_single",   orders,  THREADS, o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
-        measureParallel(client, "query_shard",  orders,  THREADS, o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
-        measureParallel(client, "query_amount", orders,  THREADS, o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
-
-        NoSqlHandleFactory.close();
-    }
-
-    private static <T> T retry(String name, Callable<T> action) throws Exception {
-        long delay = INITIAL_DELAY;
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            try {
-                T result = action.call();
-                if (attempt > 1) System.out.printf("[%s] connected on attempt %d%n", name, attempt);
-                return result;
-            } catch (Exception e) {
-                if (attempt == MAX_ATTEMPTS) throw e;
-                System.out.printf("[%s] attempt %d/%d failed: %s — retrying in %d s%n",
-                        name, attempt, MAX_ATTEMPTS, e.getMessage(), delay / 1000);
-                Thread.sleep(delay);
-                delay *= 2;
+            // Load CSV and seed the table
+            List<Order> orders = OrderCsvReader.read(Path.of(CSV_FILE), RECORDS);
+            System.out.printf("Loaded %d records from %s%n%n", orders.size(), CSV_FILE);
+            for (Order order : orders) {
+                sdk.put(TABLE, order, DurabilityLevel.COMMIT_NO_SYNC);
             }
-        }
-        throw new IllegalStateException("unreachable");
+
+            // Group orders by customer (for putBatch — same shard key required)
+            List<List<Order>> batches = new ArrayList<>(groupByCustomer(orders).values());
+
+            // Per-operation benchmark
+            OrderNoSqlClient client = sdk;
+            System.out.printf("%-6s  %-14s  %10s  %12s%n", "client", "operation", "ops/s", "avg ms/op");
+            System.out.println("-".repeat(50));
+            measure(client, "put_single",   orders,  o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
+            measureBatch(client, "put_batch", batches, b -> client.putBatch(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
+            measureBatch(client, "put_bulk",  batches, b -> client.putBulk(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
+            measure(client, "get_single",   orders,  o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
+            measure(client, "get_batch",    orders,  o -> client.getBatch(TABLE, List.of(OrderKey.of(o.customerId(), o.orderId())), ConsistencyLevel.NONE_REQUIRED));
+            measure(client, "query_shard",  orders,  o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
+            measure(client, "query_amount", orders,  o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
+
+            // Sequential vs queryByCustomer — total time over all RECORDS rows
+            int customers = batches.size();
+            System.out.printf("%n--- Read %d records: sequential vs getBatch [%d runs] ---%n",
+                    orders.size(), INSERT_RUNS);
+            System.out.printf("%-26s  %10s  %12s  %10s%n", "method", "rows/s", "total ms", "calls");
+            System.out.println("-".repeat(64));
+            compareTotal("sequential (get_single)", orders.size(), INSERT_RUNS, orders.size(), () -> {
+                for (Order o : orders)
+                    client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED);
+            });
+            compareTotal("queryByCustomer", orders.size(), INSERT_RUNS, customers, () -> {
+                for (List<Order> batch : batches)
+                    client.queryByCustomer(TABLE, batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
+            });
+
+            // Parallel benchmark — same ops distributed across THREADS workers
+            System.out.printf("%n--- Parallel benchmark [threads=%d, ops=%d] ---%n", THREADS, OPS);
+            System.out.printf("%-6s  %-14s  %10s  %12s%n", "client", "operation", "ops/s", "avg ms/op");
+            System.out.println("-".repeat(50));
+            measureParallel(client, "put_single",   orders, THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
+            measureParallel(client, "put_bulk",     orders, THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
+            measureParallel(client, "get_single",   orders, THREADS, o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
+            measureParallel(client, "query_shard",  orders, THREADS, o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
+            measureParallel(client, "query_amount", orders, THREADS, o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
+
+        } // context.close() called here — Spring shuts down all beans cleanly
     }
+
+    // -------------------------------------------------------------------------
+    // Benchmark helpers
+    // -------------------------------------------------------------------------
 
     @FunctionalInterface interface Op      { void run(Order o); }
     @FunctionalInterface interface BatchOp { void run(List<Order> batch); }

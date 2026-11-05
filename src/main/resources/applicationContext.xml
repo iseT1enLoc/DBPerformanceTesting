@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!--
+        Only third-party classes live here now — classes you cannot add
+        @Component to because you don't own their source code.
+
+        Your own classes (UserService, all UserRepository impls,
+        UserController) are registered via @Component and wired via
+        @Resource — no XML entry needed for them.
+    -->
+
+    <!-- Oracle NoSQL infrastructure -->
+    <bean id="accessTokenProvider"
+          class="oracle.nosql.driver.kv.StoreAccessTokenProvider"/>
+
+    <bean id="noSqlHandleConfig"
+          class="oracle.nosql.driver.NoSQLHandleConfig">
+        <constructor-arg value="http://localhost:8180"/>
+        <constructor-arg ref="accessTokenProvider"/>
+    </bean>
+
+    <bean id="noSqlHandle"
+          class="oracle.nosql.driver.NoSQLHandleFactory"
+          factory-method="createNoSQLHandle">
+        <constructor-arg ref="noSqlHandleConfig"/>
+    </bean>
+
+    <bean id="userCrudTest"
+          class="com.example.dbperformtest.workload.UserCrudTest">
+        <constructor-arg ref="noSqlHandle"/>
+    </bean>
+
+</beans>

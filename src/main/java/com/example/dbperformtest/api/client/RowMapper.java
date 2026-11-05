@@ -1,4 +1,4 @@
-package com.example.dbperformtest.client;
+package com.example.dbperformtest.api.client;
 
 import oracle.nosql.driver.values.MapValue;
 

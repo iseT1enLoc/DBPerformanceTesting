@@ -1,6 +1,6 @@
-package com.example.dbperformtest.client.user;
+package com.example.dbperformtest.api.client.user;
 
-import com.example.dbperformtest.client.RowMapper;
+import com.example.dbperformtest.api.client.RowMapper;
 import com.example.dbperformtest.model.User;
 import com.example.dbperformtest.model.UserKey;
 import oracle.nosql.driver.values.MapValue;
