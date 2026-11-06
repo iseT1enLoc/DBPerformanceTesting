@@ -1,14 +1,13 @@
 package com.example.dbperformtest.api.repository.user;
 
-import com.example.dbperformtest.api.client.NoSqlClient;
-import com.example.dbperformtest.api.client.SdkClientImpl;
+import com.example.dbperformtest.api.client.TableClient;
+import com.example.dbperformtest.api.client.user.UserSdkClient;
 import com.example.dbperformtest.api.dto.UserDto;
 import com.example.dbperformtest.model.ConsistencyLevel;
 import com.example.dbperformtest.model.DurabilityLevel;
 import com.example.dbperformtest.model.User;
 import com.example.dbperformtest.model.UserKey;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,13 +21,16 @@ public class NoSqlUserRepository implements UserRepository {
     private static final Logger log = LoggerFactory.getLogger(NoSqlUserRepository.class);
     private static final String TABLE = "users";
 
-    @Resource(name = "userNoSqlClient")
-    private NoSqlClient<User, UserKey> client;
+    private final TableClient<User, UserKey> client;
+
+    public NoSqlUserRepository(UserSdkClient sdkClient) {
+        this.client = new TableClient<>(sdkClient, TABLE);
+    }
 
     @PostConstruct
     public void ensureTable() {
         log.info("[NoSqlUserRepository] ensuring table '{}'", TABLE);
-        ((SdkClientImpl<User, UserKey>) client).executeDdl(
+        client.executeDdl(
                 "CREATE TABLE IF NOT EXISTS " + TABLE
                 + " (userId STRING, name STRING, email STRING,"
                 + " PRIMARY KEY (userId))");
@@ -38,7 +40,7 @@ public class NoSqlUserRepository implements UserRepository {
     @Override
     public Optional<UserDto> findById(String id) {
         log.info("[Repository] findById({}) → Oracle NoSQL GET", id);
-        User user = client.get(TABLE, new UserKey(id), ConsistencyLevel.ABSOLUTE);
+        User user = client.get(new UserKey(id), ConsistencyLevel.ABSOLUTE);
         log.info("[Repository] findById({}) → {}", id, user != null ? "hit: " + user : "miss");
         return Optional.ofNullable(user).map(this::toDto);
     }
@@ -46,7 +48,7 @@ public class NoSqlUserRepository implements UserRepository {
     @Override
     public UserDto save(UserDto dto) {
         log.info("[Repository] save({}) → Oracle NoSQL PUT", dto);
-        client.put(TABLE, toEntity(dto), DurabilityLevel.COMMIT_SYNC);
+        client.put(toEntity(dto), DurabilityLevel.COMMIT_SYNC);
         log.info("[Repository] save({}) → done", dto.id());
         return dto;
     }

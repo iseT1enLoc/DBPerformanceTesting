@@ -75,8 +75,8 @@ public class Main {
             measureBatch(client, "put_bulk",  batches, b -> client.putBulk(TABLE, b, DurabilityLevel.COMMIT_NO_SYNC));
             measure(client, "get_single",   orders,  o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
             measure(client, "get_batch",    orders,  o -> client.getBatch(TABLE, List.of(OrderKey.of(o.customerId(), o.orderId())), ConsistencyLevel.NONE_REQUIRED));
-            measure(client, "query_shard",  orders,  o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
-            measure(client, "query_amount", orders,  o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
+            measure(client, "query_shard",  orders,  o -> client.queryByCustomer(o.customerId(), ConsistencyLevel.NONE_REQUIRED));
+            measure(client, "query_amount", orders,  o -> client.queryByAmount(o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
 
             // Sequential vs queryByCustomer — total time over all RECORDS rows
             int customers = batches.size();
@@ -90,7 +90,7 @@ public class Main {
             });
             compareTotal("queryByCustomer", orders.size(), INSERT_RUNS, customers, () -> {
                 for (List<Order> batch : batches)
-                    client.queryByCustomer(TABLE, batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
+                    client.queryByCustomer(batch.get(0).customerId(), ConsistencyLevel.NONE_REQUIRED);
             });
 
             // Parallel benchmark — same ops distributed across THREADS workers
@@ -100,8 +100,8 @@ public class Main {
             measureParallel(client, "put_single",   orders, THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
             measureParallel(client, "put_bulk",     orders, THREADS, o -> client.put(TABLE, o, DurabilityLevel.COMMIT_NO_SYNC));
             measureParallel(client, "get_single",   orders, THREADS, o -> client.get(TABLE, OrderKey.of(o.customerId(), o.orderId()), ConsistencyLevel.NONE_REQUIRED));
-            measureParallel(client, "query_shard",  orders, THREADS, o -> client.queryByCustomer(TABLE, o.customerId(), ConsistencyLevel.NONE_REQUIRED));
-            measureParallel(client, "query_amount", orders, THREADS, o -> client.queryByAmount(TABLE, o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
+            measureParallel(client, "query_shard",  orders, THREADS, o -> client.queryByCustomer(o.customerId(), ConsistencyLevel.NONE_REQUIRED));
+            measureParallel(client, "query_amount", orders, THREADS, o -> client.queryByAmount(o.amount() - 1, o.amount() + 1, ConsistencyLevel.NONE_REQUIRED));
 
         } // context.close() called here — Spring shuts down all beans cleanly
     }

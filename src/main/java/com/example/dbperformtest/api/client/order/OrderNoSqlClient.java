@@ -11,8 +11,8 @@ import java.util.List;
 public interface OrderNoSqlClient extends NoSqlClient<Order, OrderKey> {
 
     /** Single-shard SQL query: all orders for one customerId. */
-    List<Order> queryByCustomer(String table, String customerId, ConsistencyLevel consistency);
+    List<Order> queryByCustomer(String customerId, ConsistencyLevel consistency);
 
     /** Cross-shard SQL query: orders with amount in [lo, hi], served by a secondary index. */
-    List<Order> queryByAmount(String table, double lo, double hi, ConsistencyLevel consistency);
+    List<Order> queryByAmount(double lo, double hi, ConsistencyLevel consistency);
 }
