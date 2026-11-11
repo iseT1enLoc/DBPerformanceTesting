@@ -193,3 +193,47 @@ Default credentials in the test fall back to `application.properties` values.
 - [Amazon S3 REST API](https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html)
 - [Ceph RGW S3-compatible operations](https://docs.ceph.com/en/reef/radosgw/s3/)
 - [Ceph MGR REST API](https://docs.ceph.com/en/reef/mgr/ceph_api/)
+
+
+Auth — Signature V4
+
+- Signing overview: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
+- Step-by-step algorithm: https://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
+
+---
+
+S3 REST API — từng operation
+
+┌────────────────────┬──────────────────────────────────────────────────────────────────────────────────┐
+│     Operation      │                                       Doc                                        │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ List Buckets       │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html             │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Create Bucket      │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html            │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ List Objects V2    │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html           │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Put Object         │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html               │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Get Object         │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html               │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Head Object        │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html              │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Delete Object      │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html            │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Create Multipart   │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html   │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Upload Part        │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html              │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Complete Multipart │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
+│ Abort Multipart    │ https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html    │
+└────────────────────┴──────────────────────────────────────────────────────────────────────────────────┘
+
+---
+
+Ceph side
+
+- S3 compatibility matrix: https://docs.ceph.com/en/reef/radosgw/s3/
+- Object operations: https://docs.ceph.com/en/reef/radosgw/s3/objectops/
+- Bucket operations: https://docs.ceph.com/en/reef/radosgw/s3/bucketops/
