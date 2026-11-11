@@ -4,84 +4,55 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!--
-        Spring Boot parent manages all Spring dependency versions for us.
-        We never have to write <version> for Spring libraries after this.
-    -->
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.4</version>
-        <relativePath/>
-    </parent>
-
     <groupId>com.example</groupId>
     <artifactId>db-perform-test</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>DBPerformTest</name>
-    <description>Oracle NoSQL SDK performance benchmark + Spring REST API learning</description>
+    <description>Oracle NoSQL SDK performance benchmark + Ceph RGW S3 client</description>
 
     <properties>
         <java.version>17</java.version>
-        <nosqldriver.version>5.4.24</nosqldriver.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <junit.version>5.10.3</junit.version>
+        <assertj.version>3.26.3</assertj.version>
     </properties>
 
     <dependencies>
-        <!-- Brings in: Spring MVC, Jackson (JSON), embedded Tomcat -->
+        <!-- JUnit 5 -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
         </dependency>
 
-        <!-- Oracle NoSQL SDK (for the benchmark Main class) -->
+        <!-- AssertJ -->
         <dependency>
-            <groupId>com.oracle.nosql.sdk</groupId>
-            <artifactId>nosqldriver</artifactId>
-            <version>${nosqldriver.version}</version>
-        </dependency>
-
-        <!-- Guava (used by UserCrudTest) -->
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>33.2.1-jre</version>
-        </dependency>
-
-        <!-- AWS S3 SDK v2 — used to connect to MicroCeph (S3-compatible object storage) -->
-        <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>s3</artifactId>
-            <version>2.28.29</version>
-        </dependency>
-
-        <!-- MinIO Java SDK — alternative S3-compatible client for MicroCeph -->
-        <dependency>
-            <groupId>io.minio</groupId>
-            <artifactId>minio</artifactId>
-            <version>8.5.17</version>
-        </dependency>
-
-        <!-- JUnit 5 + Mockito — no Spring context needed for unit tests -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!--
-                Spring Boot plugin packages the app as a runnable fat jar.
-                mvn package  →  java -jar target/db-perform-test-0.0.1-SNAPSHOT.jar
-                The main class is SpringApp (the REST server).
-            -->
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
                 <configuration>
-                    <mainClass>com.example.dbperformtest.api.SpringApp</mainClass>
+                    <source>17</source>
+                    <target>17</target>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.3.1</version>
             </plugin>
         </plugins>
     </build>
