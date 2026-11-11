@@ -47,6 +47,20 @@
             <version>33.2.1-jre</version>
         </dependency>
 
+        <!-- AWS S3 SDK v2 — used to connect to MicroCeph (S3-compatible object storage) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.28.29</version>
+        </dependency>
+
+        <!-- MinIO Java SDK — alternative S3-compatible client for MicroCeph -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.17</version>
+        </dependency>
+
         <!-- JUnit 5 + Mockito — no Spring context needed for unit tests -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

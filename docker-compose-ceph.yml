@@ -1,0 +1,50 @@
+# Single-node Ceph cluster (MON + MGR + OSD + RGW) for local S3 testing.
+#
+# Usage:
+#   docker compose -f docker-compose-ceph.yml up -d
+#   docker compose -f docker-compose-ceph.yml down -v   # wipe data
+#
+# S3 endpoint : http://localhost:7480
+# Access key  : 61KQRQ9BE3K2KL6RR0YM
+# Secret key  : QuRNALNI2Azys3vKQZ8Se0PKynzEoncAIvPiLzVI
+#
+# These values match ceph.s3.* in application.properties.
+# RGW listens on 8080 inside the container, mapped to host port 80.
+
+services:
+  ceph:
+    image: quay.io/ceph/demo:latest
+    container_name: microceph
+    hostname: ceph-demo
+    environment:
+      # Network the MON binds to — use 0.0.0.0/0 so Docker bridge works
+      MON_IP: 127.0.0.1
+      CEPH_PUBLIC_NETWORK: 0.0.0.0/0
+
+      # RGW S3 demo user — created automatically on first start
+      CEPH_DEMO_UID: s3user
+      CEPH_DEMO_ACCESS_KEY: 61KQRQ9BE3K2KL6RR0YM
+      CEPH_DEMO_SECRET_KEY: QuRNALNI2Azys3vKQZ8Se0PKynzEoncAIvPiLzVI
+
+      # Hostname the RGW uses in its virtual-host / path-style URLs
+      RGW_NAME: localhost
+
+    ports:
+      - "7480:8080"   # S3 / RGW API  →  http://localhost:7480
+      - "5000:5000"   # Ceph dashboard (optional)
+
+    volumes:
+      - ceph-data:/var/lib/ceph
+      - ceph-logs:/var/log/ceph
+
+    # ceph/demo can take 30–60 s to initialise all daemons
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  ceph-data:
+  ceph-logs:
