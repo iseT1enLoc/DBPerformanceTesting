@@ -361,10 +361,35 @@ public class RgwS3Client implements AutoCloseable {
     // ── Value types ───────────────────────────────────────────────────────────
 
     /** Immutable metadata snapshot returned by {@link #headObject}. */
-    public record ObjectMetadata(long contentLength, String contentType, String etag) {}
+    public static final class ObjectMetadata {
+        private final long   contentLength;
+        private final String contentType;
+        private final String etag;
+
+        public ObjectMetadata(long contentLength, String contentType, String etag) {
+            this.contentLength = contentLength;
+            this.contentType   = contentType;
+            this.etag          = etag;
+        }
+
+        public long   contentLength() { return contentLength; }
+        public String contentType()   { return contentType; }
+        public String etag()          { return etag; }
+    }
 
     /** A part number + ETag pair used to build the {@link #completeMultipartUpload} manifest. */
-    public record CompletedPart(int partNumber, String etag) {}
+    public static final class CompletedPart {
+        private final int    partNumber;
+        private final String etag;
+
+        public CompletedPart(int partNumber, String etag) {
+            this.partNumber = partNumber;
+            this.etag       = etag;
+        }
+
+        public int    partNumber() { return partNumber; }
+        public String etag()       { return etag; }
+    }
 
     /**
      * Unchecked exception thrown when RGW returns an unexpected HTTP status.

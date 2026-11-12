@@ -81,7 +81,48 @@ public final class RgwXmlParser {
         return nodes.getLength() > 0 ? nodes.item(0).getTextContent().trim() : "";
     }
 
-    public record ObjectInfo(String key, long size, String etag) {}
-    public record PartInfo(int partNumber, String etag, long size) {}
-    public record MultipartUploadInfo(String key, String uploadId) {}
+    public static final class ObjectInfo {
+        private final String key;
+        private final long   size;
+        private final String etag;
+
+        public ObjectInfo(String key, long size, String etag) {
+            this.key  = key;
+            this.size = size;
+            this.etag = etag;
+        }
+
+        public String key()  { return key; }
+        public long   size() { return size; }
+        public String etag() { return etag; }
+    }
+
+    public static final class PartInfo {
+        private final int    partNumber;
+        private final String etag;
+        private final long   size;
+
+        public PartInfo(int partNumber, String etag, long size) {
+            this.partNumber = partNumber;
+            this.etag       = etag;
+            this.size       = size;
+        }
+
+        public int    partNumber() { return partNumber; }
+        public String etag()       { return etag; }
+        public long   size()       { return size; }
+    }
+
+    public static final class MultipartUploadInfo {
+        private final String key;
+        private final String uploadId;
+
+        public MultipartUploadInfo(String key, String uploadId) {
+            this.key      = key;
+            this.uploadId = uploadId;
+        }
+
+        public String key()      { return key; }
+        public String uploadId() { return uploadId; }
+    }
 }
