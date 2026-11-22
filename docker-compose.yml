@@ -15,6 +15,9 @@ services:
       --developer-mode 1
       --alternator-port 8000
       --alternator-write-isolation always_use_lwt
+      --alternator-enforce-authorization 1
+      --authenticator PasswordAuthenticator
+      --authorizer CassandraAuthorizer
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'describe cluster' || exit 1"]
       interval: 15s
