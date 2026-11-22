@@ -1,0 +1,35 @@
+# ScyllaDB local development configuration
+# Reference: https://opensource.docs.scylladb.com/stable/operating-scylla/scylla-configuration.html
+
+# ── CPU & Memory ─────────────────────────────────────────────────────────────
+smp: 1               # number of CPU shards (cores used by ScyllaDB)
+memory: 512M         # total RAM allocated; e.g. 512M, 1G, 2G
+
+# ── Environment ──────────────────────────────────────────────────────────────
+overprovisioned: 1   # 1 = shared/VM/Docker/WSL2; 0 = dedicated bare metal
+developer_mode: 1    # 1 = skip production checks (disk scheduler, NTP, etc.)
+
+# ── Network ───────────────────────────────────────────────────────────────────
+listen_address: 0.0.0.0       # CQL native protocol bind address (port 9042)
+rpc_address: 0.0.0.0          # Thrift bind address (port 9160, legacy)
+
+# ── Alternator (DynamoDB-compatible API) ──────────────────────────────────────
+alternator_port: 8000          # HTTP port for Alternator; conventional default matches DynamoDB local
+# alternator_https_port: 8443  # uncomment to enable HTTPS
+
+# Write isolation policy — controls concurrent write safety:
+#   always_use_lwt   : safe for all workloads, slowest (~5x LWT overhead)
+#   only_rmw_uses_lwt: safe when blind writes and RMW are not mixed
+#   forbid_rmw       : fastest, safe for insert/blind-write-only workloads
+#   unsafe_rmw       : never use in production, testing only
+alternator_write_isolation: always_use_lwt
+
+# Require AWS SigV4 auth on Alternator (off by default for local dev)
+alternator_enforce_authorization: true
+
+# ── Authentication & Authorization ───────────────────────────────────────────
+authenticator: PasswordAuthenticator
+authorizer: CassandraAuthorizer
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+# default_log_level: info      # info | debug | trace

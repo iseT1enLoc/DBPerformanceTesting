@@ -1,0 +1,5 @@
+https://www.scylladb.com/product/technology/
+https://developers.scylladb.com/stable/getting-started/dynamodb/guides/considerations/understanding-differences.html
+https://opensource.docs.scylladb.com/stable/alternator/compatibility.html
+
+
