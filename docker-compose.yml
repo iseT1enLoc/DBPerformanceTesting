@@ -18,6 +18,8 @@ services:
       --alternator-enforce-authorization 1
       --authenticator PasswordAuthenticator
       --authorizer CassandraAuthorizer
+      --broadcast-address 127.0.0.1
+      --broadcast-rpc-address 127.0.0.1
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'describe cluster' || exit 1"]
       interval: 15s

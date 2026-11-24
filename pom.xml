@@ -16,6 +16,7 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <aws.sdk.version>2.26.12</aws.sdk.version>
+        <alternator.version>2.0.7</alternator.version>
         <junit.version>5.10.3</junit.version>
     </properties>
 
@@ -27,11 +28,18 @@
             <version>${aws.sdk.version}</version>
         </dependency>
 
-        <!-- URL connection client (lighter than Apache HTTP) -->
+        <!-- Apache HTTP client — required by alternator-client-java for sync use -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
-            <artifactId>url-connection-client</artifactId>
+            <artifactId>apache-client</artifactId>
             <version>${aws.sdk.version}</version>
+        </dependency>
+
+        <!-- ScyllaDB Alternator load-balancing client -->
+        <dependency>
+            <groupId>com.scylladb.alternator</groupId>
+            <artifactId>load-balancing</artifactId>
+            <version>${alternator.version}</version>
         </dependency>
 
         <!-- JUnit 5 -->

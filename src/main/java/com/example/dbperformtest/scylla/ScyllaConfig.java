@@ -1,8 +1,8 @@
 package com.example.dbperformtest.scylla;
 
+import com.scylladb.alternator.AlternatorDynamoDbClient;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
@@ -39,12 +39,11 @@ public final class ScyllaConfig {
         String secretKey = get("scylla.secret-key", "any");
         System.out.printf("Creating DynamoDbClient with endpoint=%s, accessKey=%s, secretKey=%s%n",
                 endpoint, accessKey, secretKey);
-        return DynamoDbClient.builder()
+        return AlternatorDynamoDbClient.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.US_EAST_1)
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
-                .httpClient(UrlConnectionHttpClient.create())
                 .build();
     }
 }

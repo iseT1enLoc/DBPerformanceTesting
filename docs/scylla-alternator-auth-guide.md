@@ -52,6 +52,20 @@ docker exec scylla cqlsh <container-ip> 9042 -u cassandra -p cassandra
 
 > Lấy container IP: `docker inspect scylla | grep IPAddress`
 
+> **Warning "password on the command line interface can be insecure":** Đây chỉ là cảnh báo, lệnh vẫn chạy bình thường. Để tắt warning, dùng file credentials thay vì truyền `-p` trực tiếp:
+> ```bash
+> # Tạo file credentials bên trong container (chạy 1 lần)
+> docker exec scylla bash -c "mkdir -p /root/.cassandra && cat > /root/.cassandra/cqlshrc << 'EOF'
+> [authentication]
+> username = cassandra
+> password = cassandra
+> EOF"
+> ```
+> Sau đó vào cqlsh **không cần** `-u` và `-p`:
+> ```bash
+> docker exec scylla cqlsh <container-ip> 9042
+> ```
+
 Tạo role với `SUPERUSER = true`:
 
 ```sql
