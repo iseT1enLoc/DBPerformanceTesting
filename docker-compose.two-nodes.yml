@@ -1,0 +1,84 @@
+networks:
+  scylla-net:
+    driver: bridge
+
+volumes:
+  scylla-node1-data:
+  scylla-node2-data:
+  maven-cache:
+
+services:
+  scylla-node1:
+    image: scylladb/scylla:6.2
+    container_name: scylla-node1
+    networks:
+      - scylla-net
+    volumes:
+      - scylla-node1-data:/var/lib/scylla
+    command: >
+      --smp 1
+      --memory 512M
+      --overprovisioned 1
+      --developer-mode 1
+      --alternator-port 8000
+      --alternator-write-isolation always_use_lwt
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  scylla-node2:
+    image: scylladb/scylla:6.2
+    container_name: scylla-node2
+    networks:
+      - scylla-net
+    volumes:
+      - scylla-node2-data:/var/lib/scylla
+    command: >
+      --smp 1
+      --memory 512M
+      --overprovisioned 1
+      --developer-mode 1
+      --alternator-port 8000
+      --alternator-write-isolation always_use_lwt
+      --seeds scylla-node1
+    depends_on:
+      scylla-node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  test-runner:
+    image: maven:3.9-eclipse-temurin-17
+    container_name: scylla-test-runner
+    networks:
+      - scylla-net
+    volumes:
+      - .:/workspace
+      - maven-cache:/root/.m2
+    working_dir: /workspace
+    depends_on:
+      scylla-node1:
+        condition: service_healthy
+      scylla-node2:
+        condition: service_healthy
+    # Wait until /localnodes returns 2 IPs (node2 fully joined), then run tests.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo '--- Waiting for 2-node cluster formation ---'
+        until wget -qO- http://scylla-node1:8000/localnodes 2>/dev/null | grep -q ','; do
+          echo 'Still waiting for node2 to join...' && sleep 5
+        done
+        echo '--- Cluster ready. Running tests ---'
+        mvn test -Dtest=TwoNodeClusterTest \
+                 -Dscylla.endpoint=http://scylla-node1:8000 \
+                 -Dscylla.access-key=any \
+                 -Dscylla.secret-key=any
